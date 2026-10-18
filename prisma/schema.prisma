@@ -1,0 +1,178 @@
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
+model User {
+ id String @id @default(cuid())
+ name String
+ email String @unique
+ password String
+ sessionVersion Int @default(0)
+ notificationsEnabled Boolean @default(true)
+ createdAt DateTime @default(now())
+ members HouseholdMember[]
+ wallets Wallet[]
+ entries Entry[]
+ resets PasswordResetToken[]
+ notifications Notification[]
+ categories Category[]
+ resources Resource[]
+}
+model Household {
+ id String @id @default(cuid())
+ name String
+ createdAt DateTime @default(now())
+ members HouseholdMember[]
+ invitations HouseholdInvitation[]
+ wallets Wallet[]
+ categories Category[]
+ resources Resource[]
+ plan ContributionPlan?
+}
+model ContributionPlan {
+ id String @id @default(cuid())
+ householdId String @unique
+ amount BigInt
+ method String
+ firstWeight BigInt
+ updatedAt DateTime @updatedAt
+ household Household @relation(fields:[householdId],references:[id],onDelete:Restrict)
+}
+model HouseholdMember {
+ id String @id @default(cuid())
+ userId String @unique
+ householdId String
+ role String @default("MEMBER")
+ declaredIncome BigInt @default(0)
+ user User @relation(fields:[userId],references:[id],onDelete:Restrict)
+ household Household @relation(fields:[householdId],references:[id],onDelete:Restrict)
+ @@unique([householdId,userId])
+}
+model HouseholdInvitation {
+ id String @id @default(cuid())
+ householdId String
+ email String
+ tokenHash String @unique
+ expiresAt DateTime
+ status String @default("PENDING")
+ household Household @relation(fields:[householdId],references:[id],onDelete:Restrict)
+ @@index([householdId,status])
+}
+model Wallet {
+ id String @id @default(cuid())
+ name String
+ type String
+ ownerId String
+ householdId String?
+ openingBalance BigInt @default(0)
+ currency String @default("IDR")
+ archived Boolean @default(false)
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Restrict)
+ household Household? @relation(fields:[householdId],references:[id],onDelete:Restrict)
+ entries Entry[]
+ @@index([ownerId,householdId])
+}
+model Category {
+ id String @id @default(cuid())
+ name String
+ kind String
+ ownerId String
+ householdId String?
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Restrict)
+ household Household? @relation(fields:[householdId],references:[id],onDelete:Restrict)
+ entries Entry[]
+ @@index([ownerId,householdId])
+}
+model Posting {
+ id String @id @default(cuid())
+ requestKey String @unique
+ creatorId String
+ kind String
+ description String
+ notes String @default("")
+ date DateTime
+ createdAt DateTime @default(now())
+ deleted Boolean @default(false)
+ entries Entry[]
+ @@index([date])
+}
+model MutationReceipt {
+ key String @id
+ userId String
+ postingId String
+}
+model Entry {
+ id String @id @default(cuid())
+ postingId String
+ walletId String
+ creatorId String
+ categoryId String?
+ amount BigInt
+ posting Posting @relation(fields:[postingId],references:[id],onDelete:Cascade)
+ wallet Wallet @relation(fields:[walletId],references:[id],onDelete:Restrict)
+ creator User @relation(fields:[creatorId],references:[id],onDelete:Restrict)
+ category Category? @relation(fields:[categoryId],references:[id],onDelete:Restrict)
+ @@unique([postingId,walletId])
+ @@index([walletId])
+}
+// Scoped configuration for budgets, goals and bills. Financial funding and
+// bill payments are persisted separately and committed atomically with postings.
+model Resource {
+ id String @id @default(cuid())
+ kind String
+ name String
+ ownerId String
+ householdId String?
+ amount BigInt
+ category String @default("Lainnya")
+ date DateTime
+ recurrence String @default("MONTHLY")
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Restrict)
+ household Household? @relation(fields:[householdId],references:[id],onDelete:Restrict)
+ events ResourceEvent[]
+ @@index([ownerId,householdId,kind])
+}
+model ResourceEvent {
+ id String @id @default(cuid())
+ resourceId String
+ requestKey String @unique
+ period String?
+ amount BigInt
+ creatorId String
+ createdAt DateTime @default(now())
+ resource Resource @relation(fields:[resourceId],references:[id],onDelete:Restrict)
+ @@unique([resourceId,period])
+}
+model PasswordResetToken {
+ id String @id @default(cuid())
+ tokenHash String @unique
+ userId String
+ expiresAt DateTime
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+}
+model Notification {
+ id String @id @default(cuid())
+ userId String
+ title String
+ read Boolean @default(false)
+ dedupe String @unique
+ createdAt DateTime @default(now())
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ @@index([userId,read])
+}
+model AuditLog {
+ id String @id @default(cuid())
+ userId String
+ action String
+ targetId String
+ createdAt DateTime @default(now())
+ @@index([userId,createdAt])
+}
+model RateLimit {
+ key String @id
+ hits Int @default(1)
+ expiresAt DateTime
+}
